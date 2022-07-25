@@ -1,0 +1,95 @@
+Question 1
+
+Select * from block_user b
+Left join contact c On b.user_id=c.user_id
+Left join email e On b.user_id=e.user_id
+Where e.hashed_email Not Like '%blockrenovation%'
+And c.first_name Not like '%test%' And c.first_name Not like '%Test%'
+And c.last_name Not like '%test%' And c.last_name not like '%Test%';
+
+This was the initial cleaned up table that removed block email addresses and names with test and Test. I checked the block_user table to make sure there were no nulls. Using a left join to that table would ensure we don’t pull in null user ids from the other tables. For the sake of this project I’m going to assume the block_user table actually has the master list of all users and there aren’t user_ids in the other tables.
+
+
+With actual_users AS
+
+(Select b.user_id,b.create_date  from block_user b
+Left join contact c On b.user_id=c.user_id
+Left join email e On b.user_id=e.user_id
+Where e.hashed_email Not Like '%blockrenovation%'
+And c.first_name Not like '%test%' And c.first_name Not like '%Test%'
+And c.last_name Not like '%test%' And c.last_name not like '%Test%')
+
+Select Count(user_id), Date_Trunc('month',create_date) from actual_users
+Group by 2
+order by 1 DESC;
+
+When using the CTE I only wanted to look at user_id and create_date so those are the only two columns I decided to pull in.
+
+
+Question 2
+Select SUM (deal_value_usd) AS monthly_value, Date_trunc ('month',closed_won_date)
+from deal
+Where deal_value_usd is not null
+Group by 2
+order by 1 DESC;
+
+
+Question 3
+
+To get closed deals I realized I needed to pull in the Deal table. There was no primary key to join on, so I first had to pull in the deal_contact table using contact_id. From there I could then join using deal_id. This CTE is essentially the cleaned list of closed deals
+
+With closed_deals AS
+
+(Select * from block_user b
+Left join contact c On b.user_id=c.user_id
+Left join email e On b.user_id=e.user_id
+Left join deal_contact d on c.contact_id=d.contact_id
+Full join deal on d.deal_id = deal.deal_id
+Where e.hashed_email Not Like '%blockrenovation%'
+And c.first_name Not like '%test%' And c.first_name Not like '%Test%'
+And c.last_name Not like '%test%' And c.last_name not like '%Test%'
+And deal.closed_won_date is not null)
+
+Select * from closed_deals;
+
+Query to calculate total number of deals by city as well as %
+
+With closed_deals AS
+
+(Select deal.closed_won_date, c.property_city
+ from block_user b
+Left join contact c On b.user_id=c.user_id
+Left join email e On b.user_id=e.user_id
+Left join deal_contact d on c.contact_id=d.contact_id
+Full join deal on d.deal_id = deal.deal_id
+Where e.hashed_email Not Like '%blockrenovation%'
+And c.first_name Not like '%test%' And c.first_name Not like '%Test%'
+And c.last_name Not like '%test%' And c.last_name not like '%Test%'
+And deal.closed_won_date is not null)
+
+Select Count (closed_won_date) As won_deals, Count(*) * 100.0/ SUM(Count(*)) over() As pct_won_deals, property_city
+from closed_deals
+Group by property_city
+Order by 1 DESC;
+
+
+Question 5
+
+Join tables together so we can analyze by utm_source
+
+Select * from contact c
+Join deal_contact d on c.contact_id=d.contact_id
+Join Deal on deal.deal_id= d.deal_id
+Where closed_won_date is not null;
+
+It’s probably easier to export the data to Excel or Google Sheets and analyze using pivot tables, but this query pulls the value each utm brings in each specific quarter. For the sake of simplicity it’s analyzing when the deal closes, but as there’s likely some lag between when a user comes to Block and closes it would also be interesting to look at by date when they came in.
+
+Select SUM (deal_value_usd) As deal_value, property_utm_source As source, Date_Trunc ('quarter',closed_won_date) As quarter
+from contact c
+Join deal_contact d on c.contact_id=d.contact_id
+Join Deal on deal.deal_id= d.deal_id
+Where closed_won_date is not null
+Group by quarter, source
+Order by deal_value DESC;
+
+It’s interesting to note the highest values don’t have any utms. This is one of the biggest challenges in digital marketing. There are certain workarounds like ensuring all your ads are properly tagged or asking customers how they heard about you, but it’s never going to be perfect.
